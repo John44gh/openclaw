@@ -149,8 +149,11 @@ function normalizeToIsoDate(value: string): string | undefined {
   return undefined;
 }
 
-function createWebSearchSchema(provider: (typeof SEARCH_PROVIDERS)[number]) {
-  const baseSchema = {
+function createWebSearchSchema(params: {
+  provider: (typeof SEARCH_PROVIDERS)[number];
+  perplexityTransport?: PerplexityTransport;
+}) {
+  const querySchema = {
     query: Type.String({ description: "Search query string." }),
     count: Type.Optional(
       Type.Number({
@@ -159,6 +162,9 @@ function createWebSearchSchema(provider: (typeof SEARCH_PROVIDERS)[number]) {
         maximum: MAX_SEARCH_COUNT,
       }),
     ),
+  } as const;
+
+  const filterSchema = {
     country: Type.Optional(
       Type.String({
         description:
@@ -187,9 +193,10 @@ function createWebSearchSchema(provider: (typeof SEARCH_PROVIDERS)[number]) {
     ),
   } as const;
 
-  if (provider === "brave") {
+  if (params.provider === "brave") {
     return Type.Object({
-      ...baseSchema,
+      ...querySchema,
+      ...filterSchema,
       search_lang: Type.Optional(
         Type.String({
           description:
@@ -205,9 +212,16 @@ function createWebSearchSchema(provider: (typeof SEARCH_PROVIDERS)[number]) {
     });
   }
 
-  if (provider === "perplexity") {
+  if (params.provider === "perplexity") {
+    if (params.perplexityTransport === "chat_completions") {
+      return Type.Object({
+        ...querySchema,
+        freshness: filterSchema.freshness,
+      });
+    }
     return Type.Object({
-      ...baseSchema,
+      ...querySchema,
+      ...filterSchema,
       domain_filter: Type.Optional(
         Type.Array(Type.String(), {
           description:
@@ -233,7 +247,10 @@ function createWebSearchSchema(provider: (typeof SEARCH_PROVIDERS)[number]) {
   }
 
   // grok, gemini, kimi, etc.
-  return Type.Object(baseSchema);
+  return Type.Object({
+    ...querySchema,
+    ...filterSchema,
+  });
 }
 
 type WebSearchConfig = NonNullable<OpenClawConfig["tools"]>["web"] extends infer Web
@@ -668,12 +685,10 @@ function resolvePerplexityBaseUrl(
   }
   if (apiKeySource === "config") {
     const inferred = inferPerplexityBaseUrlFromApiKey(apiKey);
-    if (inferred === "direct") {
-      return PERPLEXITY_DIRECT_BASE_URL;
-    }
     if (inferred === "openrouter") {
       return DEFAULT_PERPLEXITY_BASE_URL;
     }
+    return PERPLEXITY_DIRECT_BASE_URL;
   }
   return DEFAULT_PERPLEXITY_BASE_URL;
 }
@@ -1823,10 +1838,12 @@ export function createWebSearchTool(options?: {
     label: "Web Search",
     name: "web_search",
     description,
-    parameters: createWebSearchSchema(provider),
+    parameters: createWebSearchSchema({
+      provider,
+      perplexityTransport: provider === "perplexity" ? perplexityTransport.transport : undefined,
+    }),
     execute: async (_toolCallId, args) => {
-      const perplexityRuntime =
-        provider === "perplexity" ? resolvePerplexityTransport(perplexityConfig) : undefined;
+      const perplexityRuntime = provider === "perplexity" ? perplexityTransport : undefined;
       const apiKey =
         provider === "perplexity"
           ? perplexityRuntime?.apiKey

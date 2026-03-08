@@ -488,6 +488,38 @@ describe("web_search perplexity OpenRouter compatibility", () => {
     expect(mockFetch).not.toHaveBeenCalled();
     expect(result?.details).toMatchObject({ error: "unsupported_domain_filter" });
   });
+
+  it("hides Search API-only schema params on the compatibility path", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-v1-test"); // pragma: allowlist secret
+    const tool = createPerplexitySearchTool();
+    const properties = (tool?.parameters as { properties?: Record<string, unknown> } | undefined)
+      ?.properties;
+
+    expect(properties?.freshness).toBeDefined();
+    expect(properties?.country).toBeUndefined();
+    expect(properties?.language).toBeUndefined();
+    expect(properties?.date_after).toBeUndefined();
+    expect(properties?.date_before).toBeUndefined();
+    expect(properties?.domain_filter).toBeUndefined();
+    expect(properties?.max_tokens).toBeUndefined();
+    expect(properties?.max_tokens_per_page).toBeUndefined();
+  });
+
+  it("keeps structured schema params on the native Search API path", () => {
+    vi.stubEnv("PERPLEXITY_API_KEY", "pplx-test");
+    const tool = createPerplexitySearchTool();
+    const properties = (tool?.parameters as { properties?: Record<string, unknown> } | undefined)
+      ?.properties;
+
+    expect(properties?.country).toBeDefined();
+    expect(properties?.language).toBeDefined();
+    expect(properties?.freshness).toBeDefined();
+    expect(properties?.date_after).toBeDefined();
+    expect(properties?.date_before).toBeDefined();
+    expect(properties?.domain_filter).toBeDefined();
+    expect(properties?.max_tokens).toBeDefined();
+    expect(properties?.max_tokens_per_page).toBeDefined();
+  });
 });
 
 describe("web_search kimi provider", () => {
